@@ -1,0 +1,18 @@
+[source]
+source_type = "csv"
+
+[source.csv]
+path = "path/to/message.csv"
+
+[source.postgres]
+conn_str = "host=localhost port=5432 dbname=spatial user=postgres password=change_me"
+query = "SELECT * FROM message_table"
+
+[coverage]
+path = "path/to/aod_perception_competition_poi_data.csv"
+
+[output]
+dir = "result_data"
+market_direct = "market_direct.csv"
+micro_market = "micro_market_relationship.csv"
+poi_micro = "poi_micro_relationship.csv"
