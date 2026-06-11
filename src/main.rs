@@ -12,6 +12,7 @@ mod output;
 
 use std::collections::HashMap;
 use std::fs;
+use std::path::Path;
 use std::time::Instant;
 use anyhow::Result;
 use config::{load_config, CsvConfig, PostgresConfig};
@@ -25,6 +26,13 @@ use result_processor::build_micro_market_map;
 use coverage::load_coverage_map;
 use types::MergedCoverage;
 
+fn check_file_exists(path: &str, label: &str) -> Result<()> {
+    if !Path::new(path).exists() {
+        anyhow::bail!("{} not found: {}", label, path);
+    }
+    Ok(())
+}
+
 fn build_source(
     source_type: &str,
     csv: Option<&CsvConfig>,
@@ -34,6 +42,7 @@ fn build_source(
     match source_type {
         "csv" => {
             let csv_cfg = csv.ok_or_else(|| anyhow::anyhow!("csv config required"))?;
+            check_file_exists(&csv_cfg.path, "Source CSV")?;
             Ok(Box::new(CsvSource::new(&csv_cfg.path)))
         }
         "postgres" => {
@@ -47,6 +56,7 @@ fn build_source(
 
 fn main() -> Result<()> {
     let start = Instant::now();
+    check_file_exists("config/app.toml", "Config file")?;
     let config = load_config("config/app.toml")?;
     fs::create_dir_all(&config.output.dir)?;
 
@@ -72,23 +82,23 @@ fn main() -> Result<()> {
         eprintln!("[warn] coverage section not configured, all coverage fields will be empty");
         HashMap::new()
     };
-    println!("  coverage load: {:6.1}s", t0.elapsed().as_secs_f64());
+    println!("  coverage load: {:6.1}s  [loaded : {}]", t0.elapsed().as_secs_f64(), coverage_map.len());
 
     let t0 = Instant::now();
     let records = source.load_records()?;
     let features = parse_all_wkt(records)?;
     let (pois, micros, markets) = split_by_data_type(features)?;
-    println!("  load+parse+wkt: {:6.1}s", t0.elapsed().as_secs_f64());
+    println!("  load+parse+wkt: {:6.1}s  [POI: {}, micro: {}, market: {}]", t0.elapsed().as_secs_f64(), pois.len(), micros.len(), markets.len());
 
     let t0 = Instant::now();
-    let pois_proj = project_features(&pois);
-    let micros_proj = project_features(&micros);
-    let markets_proj = project_features(&markets);
+    let pois_proj = project_features(pois);
+    let micros_proj = project_features(micros);
+    let markets_proj = project_features(markets);
     println!("  projection:     {:6.1}s", t0.elapsed().as_secs_f64());
 
     let t0 = Instant::now();
     output::save_market_direct(
-        &markets,
+        &markets_proj,
         &coverage_map,
         &format!("{}/{}", config.output.dir, config.output.market_direct),
     )?;
@@ -96,23 +106,25 @@ fn main() -> Result<()> {
 
     let t0 = Instant::now();
     let micro_market_results = spatial_join(&micros_proj, &markets_proj);
+    let micro_matched = micro_market_results.iter().filter(|r| r.right_raw.is_some()).count();
     output::save_micro_market(
         &micro_market_results,
         &coverage_map,
         &format!("{}/{}", config.output.dir, config.output.micro_market),
     )?;
-    println!("  micro->market:  {:6.1}s", t0.elapsed().as_secs_f64());
+    println!("  micro->market:  {:6.1}s  [matched: {}/{}]", t0.elapsed().as_secs_f64(), micro_matched, micros_proj.len());
 
     let t0 = Instant::now();
     let micro_market_map = build_micro_market_map(&micro_market_results);
     let poi_micro_results = spatial_join(&pois_proj, &micros_proj);
+    let poi_matched = poi_micro_results.iter().filter(|r| r.right_raw.is_some()).count();
     output::save_poi_micro(
         &poi_micro_results,
         &micro_market_map,
         &coverage_map,
         &format!("{}/{}", config.output.dir, config.output.poi_micro),
     )?;
-    println!("  poi->micro:     {:6.1}s", t0.elapsed().as_secs_f64());
+    println!("  poi->micro:     {:6.1}s  [matched: {}/{}]", t0.elapsed().as_secs_f64(), poi_matched, pois_proj.len());
 
     let elapsed = start.elapsed();
     let secs = elapsed.as_secs_f64();

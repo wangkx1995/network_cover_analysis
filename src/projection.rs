@@ -42,12 +42,12 @@ fn project_geometry(geom: &Geometry<f64>) -> Geometry<f64> {
     }
 }
 
-pub fn project_features(features: &[SpatialFeature]) -> Vec<SpatialFeature> {
+pub fn project_features(features: Vec<SpatialFeature>) -> Vec<SpatialFeature> {
     features
-        .iter()
+        .into_iter()
         .map(|f| SpatialFeature {
             geometry: project_geometry(&f.geometry),
-            ..f.clone()
+            raw: f.raw,
         })
         .collect()
 }
