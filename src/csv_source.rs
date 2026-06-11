@@ -1,7 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
 use anyhow::Result;
-use polars::prelude::*;
 use crate::types::RawRecord;
 use crate::data_source::DataSource;
 
@@ -17,25 +15,20 @@ impl CsvSource {
 
 impl DataSource for CsvSource {
     fn load_records(&self) -> Result<Vec<RawRecord>> {
-        let df = CsvReadOptions::default()
-            .with_has_header(true)
-            .try_into_reader_with_file_path(Some(PathBuf::from(&self.path)))?
-            .finish()?;
+        let mut rdr = csv::ReaderBuilder::new()
+            .has_headers(true)
+            .from_path(&self.path)?;
 
-        let col_names: Vec<&str> = df.get_column_names().iter().map(|s| s.as_str()).collect();
-        let height = df.height();
+        let headers: Vec<String> = rdr.headers()?.iter().map(|s| s.to_string()).collect();
 
-        let mut records = Vec::with_capacity(height);
-        for i in 0..height {
+        let mut records = Vec::new();
+        for result in rdr.records() {
+            let record = result?;
             let mut fields = HashMap::new();
-            for &name in &col_names {
-                let series = df.column(name)?;
-                let val = series
-                    .get(i)
-                    .map(|av| av.to_string())
-                    .map(|s| s.trim_matches('"').to_string())
-                    .unwrap_or_default();
-                fields.insert(name.to_string(), val);
+            for (i, field) in record.iter().enumerate() {
+                if i < headers.len() {
+                    fields.insert(headers[i].clone(), field.to_string());
+                }
             }
             records.push(RawRecord { fields });
         }

@@ -1,3 +1,6 @@
+[database]
+conn_str = "host=localhost port=5432 dbname=spatial user=postgres password=change_me"
+
 [source]
 source_type = "csv"
 
@@ -5,11 +8,16 @@ source_type = "csv"
 path = "path/to/message.csv"
 
 [source.postgres]
-conn_str = "host=localhost port=5432 dbname=spatial user=postgres password=change_me"
 query = "SELECT * FROM message_table"
 
 [coverage]
+source_type = "csv"
+
+[coverage.csv]
 path = "path/to/aod_perception_competition_poi_data.csv"
+
+[coverage.postgres]
+query = "SELECT * FROM aod_perception_competition_poi_data"
 
 [output]
 dir = "result_data"

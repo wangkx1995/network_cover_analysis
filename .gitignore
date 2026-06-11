@@ -2,3 +2,4 @@
 .DS_Store
 .idea/
 config/app.toml
+result_data/

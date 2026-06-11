@@ -32,18 +32,53 @@ impl DataSource for PgSource {
             .iter()
             .map(|c| c.name().to_string())
             .collect();
-        let num_cols = col_names.len();
 
         let mut records = Vec::with_capacity(rows.len());
         for row in rows {
             let mut fields = HashMap::new();
-            for i in 0..num_cols {
-                let val: Option<String> = row.try_get(i)?;
-                fields.insert(col_names[i].clone(), val.unwrap_or_default());
+            for (i, name) in col_names.iter().enumerate() {
+                let val = column_to_string(&row, i);
+                fields.insert(name.clone(), val);
             }
             records.push(RawRecord { fields });
         }
 
         Ok(records)
+    }
+}
+
+fn column_to_string(row: &postgres::Row, idx: usize) -> String {
+    let ty = row.columns()[idx].type_();
+    match ty.name() {
+        "varchar" | "text" | "bpchar" | "name" => {
+            row.try_get::<_, Option<String>>(idx).ok().flatten().unwrap_or_default()
+        }
+        "int2" => {
+            row.try_get::<_, Option<i16>>(idx).ok().flatten().map(|v| v.to_string()).unwrap_or_default()
+        }
+        "int4" => {
+            row.try_get::<_, Option<i32>>(idx).ok().flatten().map(|v| v.to_string()).unwrap_or_default()
+        }
+        "int8" => {
+            row.try_get::<_, Option<i64>>(idx).ok().flatten().map(|v| v.to_string()).unwrap_or_default()
+        }
+        "float4" => {
+            row.try_get::<_, Option<f32>>(idx).ok().flatten().map(|v| v.to_string()).unwrap_or_default()
+        }
+        "float8" => {
+            row.try_get::<_, Option<f64>>(idx).ok().flatten().map(|v| v.to_string()).unwrap_or_default()
+        }
+        "bool" => {
+            row.try_get::<_, Option<bool>>(idx).ok().flatten().map(|v| v.to_string()).unwrap_or_default()
+        }
+        "numeric" => {
+            row.try_get::<_, Option<f64>>(idx).ok().flatten().map(|v| v.to_string()).unwrap_or_default()
+        }
+        "timestamptz" | "timestamp" => {
+            row.try_get::<_, Option<String>>(idx).ok().flatten().unwrap_or_default()
+        }
+        _ => {
+            row.try_get::<_, Option<String>>(idx).ok().flatten().unwrap_or_default()
+        }
     }
 }

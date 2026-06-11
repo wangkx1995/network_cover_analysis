@@ -14,41 +14,64 @@ use std::collections::HashMap;
 use std::fs;
 use std::time::Instant;
 use anyhow::Result;
-use config::load_config;
+use config::{load_config, CsvConfig, PostgresConfig};
 use data_source::DataSource;
 use csv_source::CsvSource;
 use pg_source::PgSource;
 use wkt_parser::{parse_all_wkt, split_by_data_type};
 use projection::project_features;
 use spatial_join::spatial_join;
-use result_processor::{dedup_best_match, build_micro_market_map};
+use result_processor::build_micro_market_map;
 use coverage::load_coverage_map;
 use types::MergedCoverage;
+
+fn build_source(
+    source_type: &str,
+    csv: Option<&CsvConfig>,
+    postgres: Option<&PostgresConfig>,
+    conn_str: Option<&str>,
+) -> Result<Box<dyn DataSource>> {
+    match source_type {
+        "csv" => {
+            let csv_cfg = csv.ok_or_else(|| anyhow::anyhow!("csv config required"))?;
+            Ok(Box::new(CsvSource::new(&csv_cfg.path)))
+        }
+        "postgres" => {
+            let pg_cfg = postgres.ok_or_else(|| anyhow::anyhow!("postgres config required"))?;
+            let conn = conn_str.ok_or_else(|| anyhow::anyhow!("database.conn_str required for postgres source"))?;
+            Ok(Box::new(PgSource::new(conn, &pg_cfg.query)))
+        }
+        _ => anyhow::bail!("unsupported source type: {}", source_type),
+    }
+}
 
 fn main() -> Result<()> {
     let start = Instant::now();
     let config = load_config("config/app.toml")?;
     fs::create_dir_all(&config.output.dir)?;
 
-    let source: Box<dyn DataSource> = match config.source.source_type.as_str() {
-        "csv" => {
-            let csv_cfg = config.source.csv.expect("csv config required");
-            Box::new(CsvSource::new(&csv_cfg.path))
-        }
-        "postgres" => {
-            let pg_cfg = config.source.postgres.expect("postgres config required");
-            Box::new(PgSource::new(&pg_cfg.conn_str, &pg_cfg.query))
-        }
-        _ => anyhow::bail!("unsupported source type: {}", config.source.source_type),
-    };
+    let conn_str = config.database.as_ref().map(|d| d.conn_str.as_str());
+
+    let source = build_source(
+        &config.source.source_type,
+        config.source.csv.as_ref(),
+        config.source.postgres.as_ref(),
+        conn_str,
+    )?;
 
     let t0 = Instant::now();
-    let coverage_map: HashMap<String, MergedCoverage> = config
-        .coverage
-        .as_ref()
-        .map(|c| load_coverage_map(&c.path))
-        .transpose()?
-        .unwrap_or_default();
+    let coverage_map: HashMap<String, MergedCoverage> = if let Some(c) = &config.coverage {
+        let cov_source = build_source(
+            &c.source_type,
+            c.csv.as_ref(),
+            c.postgres.as_ref(),
+            conn_str,
+        )?;
+        load_coverage_map(&*cov_source)?
+    } else {
+        eprintln!("[warn] coverage section not configured, all coverage fields will be empty");
+        HashMap::new()
+    };
     println!("  coverage load: {:6.1}s", t0.elapsed().as_secs_f64());
 
     let t0 = Instant::now();
@@ -73,20 +96,18 @@ fn main() -> Result<()> {
 
     let t0 = Instant::now();
     let micro_market_results = spatial_join(&micros_proj, &markets_proj);
-    let micro_market_deduped = dedup_best_match(micro_market_results);
     output::save_micro_market(
-        &micro_market_deduped,
+        &micro_market_results,
         &coverage_map,
         &format!("{}/{}", config.output.dir, config.output.micro_market),
     )?;
     println!("  micro->market:  {:6.1}s", t0.elapsed().as_secs_f64());
 
     let t0 = Instant::now();
-    let micro_market_map = build_micro_market_map(&micro_market_deduped);
+    let micro_market_map = build_micro_market_map(&micro_market_results);
     let poi_micro_results = spatial_join(&pois_proj, &micros_proj);
-    let poi_micro_deduped = dedup_best_match(poi_micro_results);
     output::save_poi_micro(
-        &poi_micro_deduped,
+        &poi_micro_results,
         &micro_market_map,
         &coverage_map,
         &format!("{}/{}", config.output.dir, config.output.poi_micro),

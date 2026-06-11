@@ -4,18 +4,26 @@ use std::fs;
 
 #[derive(Debug, Deserialize)]
 pub struct AppConfig {
+    pub database: Option<DatabaseConfig>,
     pub source: SourceConfig,
     pub output: OutputConfig,
     pub coverage: Option<CoverageConfig>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct CoverageConfig {
-    pub path: String,
+pub struct DatabaseConfig {
+    pub conn_str: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct SourceConfig {
+    pub source_type: String,
+    pub csv: Option<CsvConfig>,
+    pub postgres: Option<PostgresConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CoverageConfig {
     pub source_type: String,
     pub csv: Option<CsvConfig>,
     pub postgres: Option<PostgresConfig>,
@@ -28,7 +36,6 @@ pub struct CsvConfig {
 
 #[derive(Debug, Deserialize)]
 pub struct PostgresConfig {
-    pub conn_str: String,
     pub query: String,
 }
 

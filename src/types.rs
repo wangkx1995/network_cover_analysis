@@ -8,7 +8,6 @@ pub struct RawRecord {
 
 #[derive(Debug, Clone)]
 pub struct SpatialFeature {
-    pub row_id: usize,
     pub geometry: Geometry<f64>,
     pub raw: RawRecord,
 }

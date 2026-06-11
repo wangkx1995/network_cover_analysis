@@ -19,11 +19,7 @@ pub fn parse_all_wkt(records: Vec<RawRecord>) -> Result<Vec<SpatialFeature>> {
         let geometry: Geometry<f64> = Geometry::try_from_wkt_str(wkt_str)
             .map_err(|e| anyhow::anyhow!("WKT parse error at row {}: {}", row_id, e))?;
 
-        features.push(SpatialFeature {
-            row_id,
-            geometry,
-            raw: record,
-        });
+        features.push(SpatialFeature { geometry, raw: record });
     }
 
     Ok(features)

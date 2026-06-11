@@ -1,36 +1,22 @@
 use std::collections::HashMap;
 use anyhow::Result;
 use crate::types::MergedCoverage;
+use crate::data_source::DataSource;
 
-pub fn load_coverage_map(path: &str) -> Result<HashMap<String, MergedCoverage>> {
-    let mut rdr = csv::ReaderBuilder::new()
-        .trim(csv::Trim::All)
-        .from_path(path)?;
+pub fn load_coverage_map(source: &dyn DataSource) -> Result<HashMap<String, MergedCoverage>> {
+    let records = source.load_records()?;
 
-    let headers: Vec<String> = rdr.headers()?.iter().map(|s| s.to_string()).collect();
-
-    let mut dedup: HashMap<(String, String), Vec<HashMap<String, String>>> = HashMap::new();
-    for result in rdr.records() {
-        let record = result?;
-        let mut map = HashMap::new();
-        for (i, field) in record.iter().enumerate() {
-            if i < headers.len() {
-                map.insert(headers[i].clone(), field.to_string());
-            }
-        }
-        let pn = map.get("poi_number").cloned().unwrap_or_default();
-        let tech = map.get("technology").cloned().unwrap_or_default();
-        dedup.entry((pn, tech)).or_default().push(map);
+    let mut dedup: HashMap<(String, String), HashMap<String, String>> = HashMap::new();
+    for record in records {
+        let pn = record.fields.get("poi_number").cloned().unwrap_or_default();
+        let tech = record.fields.get("technology").cloned().unwrap_or_default();
+        dedup.insert((pn, tech), record.fields);
     }
-
-    let deduped: Vec<HashMap<String, String>> = dedup.into_values().filter_map(|mut v| v.pop()).collect();
 
     let mut lte_rows: HashMap<String, HashMap<String, String>> = HashMap::new();
     let mut nr_rows: HashMap<String, HashMap<String, String>> = HashMap::new();
 
-    for row in deduped {
-        let pn = row.get("poi_number").cloned().unwrap_or_default();
-        let tech = row.get("technology").cloned().unwrap_or_default();
+    for ((pn, tech), row) in dedup {
         match tech.as_str() {
             "LTE" => { lte_rows.insert(pn, row); }
             "NR" => { nr_rows.insert(pn, row); }

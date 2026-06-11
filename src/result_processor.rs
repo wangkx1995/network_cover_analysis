@@ -1,22 +1,6 @@
 use std::collections::HashMap;
 use crate::spatial_join::JoinResult;
 
-pub fn dedup_best_match(results: Vec<JoinResult>) -> Vec<JoinResult> {
-    let mut best: HashMap<usize, JoinResult> = HashMap::new();
-
-    for r in results {
-        best.entry(r.left_row_id)
-            .and_modify(|existing| {
-                if r.intersection_ratio > existing.intersection_ratio {
-                    *existing = r.clone();
-                }
-            })
-            .or_insert(r);
-    }
-
-    best.into_values().collect()
-}
-
 pub fn build_micro_market_map(
     results: &[JoinResult],
 ) -> HashMap<String, (String, String)> {

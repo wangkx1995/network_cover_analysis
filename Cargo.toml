@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-polars = { version = "0.45", features = ["csv", "strings"] }
 geo = "0.33"
 geo-types = "0.7"
 wkt = "0.14"

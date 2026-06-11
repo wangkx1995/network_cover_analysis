@@ -25,10 +25,8 @@ impl RTreeObject for RectEntry {
 
 #[derive(Debug, Clone)]
 pub struct JoinResult {
-    pub left_row_id: usize,
     pub left_raw: RawRecord,
     pub right_raw: Option<RawRecord>,
-    pub intersection_ratio: f64,
 }
 
 fn as_multipolygon(g: &Geometry<f64>) -> Option<MultiPolygon<f64>> {
@@ -74,20 +72,16 @@ pub fn spatial_join(left: &[SpatialFeature], right: &[SpatialFeature]) -> Vec<Jo
                 Some(mp) => mp,
                 None => {
                     return vec![JoinResult {
-                        left_row_id: left_feat.row_id,
                         left_raw: left_feat.raw.clone(),
                         right_raw: None,
-                        intersection_ratio: 0.0,
                     }];
                 }
             };
             let left_area: f64 = left_mp.iter().map(|p| p.unsigned_area()).sum();
             if left_area <= 0.0 {
                 return vec![JoinResult {
-                    left_row_id: left_feat.row_id,
                     left_raw: left_feat.raw.clone(),
                     right_raw: None,
-                    intersection_ratio: 0.0,
                 }];
             }
 
@@ -95,10 +89,8 @@ pub fn spatial_join(left: &[SpatialFeature], right: &[SpatialFeature]) -> Vec<Jo
                 Some(r) => r,
                 None => {
                     return vec![JoinResult {
-                        left_row_id: left_feat.row_id,
                         left_raw: left_feat.raw.clone(),
                         right_raw: None,
-                        intersection_ratio: 0.0,
                     }];
                 }
             };
@@ -109,54 +101,57 @@ pub fn spatial_join(left: &[SpatialFeature], right: &[SpatialFeature]) -> Vec<Jo
                 [left_rect.max().x, left_rect.max().y],
             );
 
-            let mut results: Vec<JoinResult> = rtree
-                .locate_in_envelope_intersecting(&env)
-                .filter_map(|entry| {
-                    let (right_mp, right_rect, right_feat) = &right_items[entry.index];
-                    if !left_mp.intersects(right_mp) {
-                        return None;
-                    }
+            let mut best_ratio = 0.0;
+            let mut best_right: Option<&SpatialFeature> = None;
 
-                    let ratio = match catch_unwind(|| {
-                        let inter_mp = left_mp.intersection(right_mp);
-                        let inter_area: f64 = inter_mp.iter().map(|p| p.unsigned_area()).sum();
-                        inter_area / left_area
-                    }) {
-                        Ok(r) => r,
-                        Err(_) => {
-                            let overlap = bbox_overlap_area(&left_rect, right_rect);
-                            if left_bbox_a > 0.0 {
-                                overlap / left_bbox_a
-                            } else {
-                                0.0
-                            }
+            for entry in rtree.locate_in_envelope_intersecting(&env) {
+                let (right_mp, right_rect, right_feat) = &right_items[entry.index];
+                let bbox_upper = if left_area > 0.0 {
+                    bbox_overlap_area(&left_rect, right_rect) / left_area
+                } else {
+                    0.0
+                };
+                if bbox_upper <= best_ratio {
+                    continue;
+                }
+
+                if !left_mp.intersects(right_mp) {
+                    continue;
+                }
+
+                let ratio = match catch_unwind(|| {
+                    let inter_mp = left_mp.intersection(right_mp);
+                    let inter_area: f64 = inter_mp.iter().map(|p| p.unsigned_area()).sum();
+                    inter_area / left_area
+                }) {
+                    Ok(r) => r,
+                    Err(_) => {
+                        let overlap = bbox_overlap_area(&left_rect, right_rect);
+                        if left_bbox_a > 0.0 {
+                            overlap / left_bbox_a
+                        } else {
+                            0.0
                         }
-                    };
-
-                    let ratio = ratio.clamp(0.0, 1.0);
-                    if ratio <= 0.0 {
-                        return None;
                     }
+                };
 
-                    Some(JoinResult {
-                        left_row_id: left_feat.row_id,
-                        left_raw: left_feat.raw.clone(),
-                        right_raw: Some(right_feat.raw.clone()),
-                        intersection_ratio: ratio,
-                    })
-                })
-                .collect();
+                let ratio = ratio.clamp(0.0, 1.0);
+                if ratio <= best_ratio {
+                    continue;
+                }
 
-            if results.is_empty() {
-                results.push(JoinResult {
-                    left_row_id: left_feat.row_id,
-                    left_raw: left_feat.raw.clone(),
-                    right_raw: None,
-                    intersection_ratio: 0.0,
-                });
+                best_ratio = ratio;
+                best_right = Some(right_feat);
+                if best_ratio >= 1.0 {
+                    break;
+                }
             }
 
-            results
+            let right_raw = best_right.map(|r| r.raw.clone());
+            vec![JoinResult {
+                left_raw: left_feat.raw.clone(),
+                right_raw,
+            }]
         })
         .collect()
 }
