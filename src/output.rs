@@ -41,7 +41,7 @@ pub fn save_market_direct(
     path: &str,
 ) -> Result<()> {
     let mut wtr = Writer::from_path(path)?;
-    wtr.write_record(["地市", "市场网格编号", "市场网格名称",
+    wtr.write_record(["地市", "市场网格编号", "市场网格名称", "polygon_geom",
         "4G移动覆盖率", "4G竞对覆盖率", "5G移动覆盖率", "5G竞对覆盖率",
         "4G市场份额（市占率）", "5G市场份额（市占率）"])?;
     for m in markets {
@@ -51,6 +51,7 @@ pub fn save_market_direct(
             get_str(&m.raw.fields, "region_name"),
             pn,
             get_str(&m.raw.fields, "poi_name"),
+            get_str(&m.raw.fields, "polygon_geom"),
         ];
         row.extend(coverage_fields(cov));
         wtr.write_record(&row)?;
@@ -65,7 +66,7 @@ pub fn save_micro_market(
     path: &str,
 ) -> Result<()> {
     let mut wtr = Writer::from_path(path)?;
-    wtr.write_record(["地市", "微网格编号", "微网格名称",
+    wtr.write_record(["地市", "微网格编号", "微网格名称", "polygon_geom",
         "4G移动覆盖率", "4G竞对覆盖率", "5G移动覆盖率", "5G竞对覆盖率",
         "4G市场份额（市占率）", "5G市场份额（市占率）"])?;
     for r in results {
@@ -75,6 +76,7 @@ pub fn save_micro_market(
             get_str(&r.left_raw.fields, "region_name"),
             pn,
             get_str(&r.left_raw.fields, "poi_name"),
+            get_str(&r.left_raw.fields, "polygon_geom"),
         ];
         row.extend(coverage_fields(cov));
         wtr.write_record(&row)?;
@@ -90,7 +92,7 @@ pub fn save_poi_micro(
     path: &str,
 ) -> Result<()> {
     let mut wtr = Writer::from_path(path)?;
-    wtr.write_record(["地市", "POI编号", "归属的微网格编号", "归属的市场网格编号",
+    wtr.write_record(["地市", "POI编号", "polygon_geom", "归属的微网格编号", "归属的市场网格编号",
         "4G移动覆盖率", "4G竞对覆盖率", "5G移动覆盖率", "5G竞对覆盖率",
         "4G市场份额（市占率）", "5G市场份额（市占率）"])?;
     for r in results {
@@ -105,6 +107,7 @@ pub fn save_poi_micro(
         let mut row = vec![
             get_str(&r.left_raw.fields, "region_name"),
             pn,
+            get_str(&r.left_raw.fields, "polygon_geom"),
             micro_id,
             market_id,
         ];
